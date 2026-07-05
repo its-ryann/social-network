@@ -42,7 +42,7 @@ func Connect(dbPath string) (*Database, error) {
 
 // RunMigrations compiles and executes migrations atomically using io/fs virtual directory
 func (d *Database) RunMigrations() error {
-	sourceDriver, err := iofs.New(migrationFiles, "migrations/sqlite")
+	sourceDriver, err := iofs.New(migrationFiles, "migrations")
 	if err != nil {
 		return fmt.Errorf("failed to create migration iofs driver: %w", err)
 	}
