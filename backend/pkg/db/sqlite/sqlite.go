@@ -12,7 +12,7 @@ import (
 	_ "github.com/mattn/go-sqlite3" // Driver initialization
 )
 
-//go:embed migrations/sqlite/*.sql
+//go:embed migrations/*.sql
 var migrationFiles embed.FS
 
 type Database struct {
