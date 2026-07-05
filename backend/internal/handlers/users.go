@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"database/sql"
 	"fmt"
 	"net/http"
 	"social-network/backend/internal/auth"
@@ -8,12 +9,13 @@ import (
 )
 
 type UserHandler struct {
-	DB *Database
+	DB *sql.DB
 }
 
 func (h *UserHandler) Register(w http.ResponseWriter, r *http.Request) {
-	if err := r.ParseMultipartForm(10 << 20); err != nil { // Limit to 10MB
-		http.Error(w, "Failed to parse form data", http.StatusBadRequest)
+	// Parse multipart payload bounding max buffer overhead to 10MB to mitigate DoS risks
+	if err := r.ParseMultipartForm(10 << 20); err != nil {
+		http.Error(w, `{"error":"Payload sizing threshold exceeded"}`, http.StatusBadRequest)
 		return
 	}
 
@@ -21,45 +23,41 @@ func (h *UserHandler) Register(w http.ResponseWriter, r *http.Request) {
 	password := r.FormValue("password")
 	firstName := r.FormValue("first_name")
 	lastName := r.FormValue("last_name")
-	dateOfBirth := r.FormValue("date_of_birth")
+	dob := r.FormValue("dob")
 
-	if email == "" || password == "" || firstName == "" || lastName == "" || dateOfBirth == "" {
-		http.Error(w, "Missing required fields", http.StatusBadRequest)
+	// Validate required fields
+	if email == "" || password == "" || firstName == "" || lastName == "" || dob == "" {
+		http.Error(w, `{"error":"Missing mandatory registration fields"}`, http.StatusUnprocessableEntity)
 		return
 	}
 
-	passwordHash, err := auth.HashPassword(password)
+	// Encrypt raw user input password credentials
+	hashedPassword, err := auth.HashPassword(password)
 	if err != nil {
-		http.Error(w, "Failed to hash password", http.StatusInternalServerError)
+		http.Error(w, `{"error":"Internal cryptographic processing failure"}`, http.StatusInternalServerError)
 		return
 	}
 
-	userID := fmt.Sprintf("%d", time.Now().UnixNano()) // Simple unique ID generation
+	// Generate a unique user id string prefix
+	userID := fmt.Sprintf("usr_%d", time.Now().UnixNano())
 
-	user := &User{
-		ID:           userID,
-		Email:        email,
-		PasswordHash: passwordHash,
-		FirstName:    firstName,
-		LastName:     lastName,
-		DateOfBirth:  dateOfBirth,
-		IsPublic:     true, // Default to public profile
-		CreatedAt:    time.Now(),
-	}
-
-	if err := h.DB.CreateUser(user); err != nil {
-		http.Error(w, "Failed to create user", http.StatusInternalServerError)
-		return
-	}
-
-	token, err := auth.CreateSession(h.DB.DB, userID)
+	// Persist data record safely using standard parameterized queries
+	query := `INSERT INTO users (id, email, password_hash, first_name, last_name, date_of_birth) VALUES (?, ?, ?, ?, ?, ?)`
+	_, err = h.DB.Exec(query, userID, email, hashedPassword, firstName, lastName, dob)
 	if err != nil {
-		http.Error(w, "Failed to create session", http.StatusInternalServerError)
+		http.Error(w, `{"error":"Account constraints collision"}`, http.StatusConflict)
+		return
+	}
+
+	// Automatically establish user login session tracking
+	token, err := auth.CreateSession(h.DB, userID)
+	if err != nil {
+		http.Error(w, `{"error":"State tracking engine generation error"}`, http.StatusInternalServerError)
 		return
 	}
 
 	auth.SetSessionCookie(w, token)
 
 	w.WriteHeader(http.StatusCreated)
-	fmt.Fprintf(w, "User registered successfully")
+	w.Write([]byte(`{"message":"User account established successfully"}`))
 }
