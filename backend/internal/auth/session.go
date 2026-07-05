@@ -9,6 +9,7 @@ import (
 	"time"
 )
 
+// GenerateSecureToken creates an unguessable 32-byte cryptographic session tracking string
 func GenerateSecureToken() (string, error) {
 	b := make([]byte, 32)
 	if _, err := rand.Read(b); err != nil {
@@ -17,30 +18,34 @@ func GenerateSecureToken() (string, error) {
 	return hex.EncodeToString(b), nil
 }
 
+// CreateSession generates a new tracking token and stores it inside SQLite
 func CreateSession(db *sql.DB, userID string) (string, error) {
 	token, err := GenerateSecureToken()
 	if err != nil {
-		return "", fmt.Errorf("failed to generate secure token: %w", err)
+		return "", err
 	}
 
-	expiration := time.Now().Add(24 * time.Hour) // Session valid for 24 hours
+	// Session expires explicitly in 24 hours
+	expiresAt := time.Now().Add(24 * time.Hour)
 
-	query := `INSERT INTO sessions (user_id, token, expires_at) VALUES ($1, $2, $3)`
-	if _, err := db.Exec(query, userID, token, expiration); err != nil {
-		return "", fmt.Errorf("failed to create session: %w", err)
+	query := `INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, ?)`
+	_, err = db.Exec(query, token, userID, expiresAt)
+	if err != nil {
+		return "", fmt.Errorf("session persistence error: %w", err)
 	}
 
 	return token, nil
 }
 
+// SetSessionCookie applies rigid HTTP attributes to prevent common web attacks
 func SetSessionCookie(w http.ResponseWriter, token string) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     "session_token",
 		Value:    token,
 		Path:     "/",
-		HttpOnly: true,
-		Secure:   true,
-		SameSite: http.SameSiteStrictMode,
-		MaxAge:   86400, // 24 hours
+		Expires:  time.Now().Add(24 * time.Hour),
+		HttpOnly: true,                  // Blocks XSS execution engines from extracting the token
+		Secure:   false,                 // Toggle to true in production environments enforcing HTTPS
+		SameSite: http.SameSiteLaxMode,  // Mitigates standard Cross-Site Request Forgery vectors
 	})
 }
