@@ -26,7 +26,7 @@ func main() {
 	}
 
 	// 2. Build Routing Topology
-	mux := router.NewRouter()
+	mux := router.NewRouter(database.Db)
 
 	// 3. Chain Edge Security & Visibility Framework (Starting basic)
 	handlerPipeline := middleware.Logger(middleware.RateLimit(middleware.CORS(mux)))
