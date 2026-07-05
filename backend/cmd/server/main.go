@@ -1,26 +1,28 @@
-package server
+package main
 
 import (
 	"log"
 	"os"
-	"social-network/backend/pkg/db/sqlite"
+	"socialnetwork/backend/pkg/db/sqlite"
 )
 
 func main() {
-	dbPath := os.Getenv("DB_PATH")
-	if dbPath == "" {
-		log.Fatal("DB_PATH environment variable is not set")
-	}
+	log.Println("[BOOTSTRAP] Initializing database engine validation scaffold...")
 
-	db, err := sqlite.Connect(dbPath)
+	dbPath := "./socialnetwork.db"
+
+	// 1. Establish data link layer
+	database, err := sqlite.Connect(dbPath)
 	if err != nil {
-		log.Fatalf("Failed to connect to database: %v", err)
+		log.Fatalf("[CRITICAL] Database connection initialization aborted: %v", err)
 	}
-	defer db.Db.Close()
+	defer database.Db.Close()
 
-	if err := db.RunMigrations(); err != nil {
-		log.Fatalf("Failed to run migrations: %v", err)
+	// 2. Schema synchronization run
+	if err := database.RunMigrations(); err != nil {
+		log.Fatalf("[CRITICAL] Schema migration execution aborted: %v", err)
 	}
 
-	log.Println("Database migrations completed successfully.")
+	log.Println("[SUCCESS] Phase 1 verification complete. Bedrock layers structurally secure.")
+	os.Exit(0)
 }
