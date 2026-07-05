@@ -7,6 +7,7 @@ import (
 	"social-network/backend/internal/middleware"
 	"social-network/backend/internal/router"
 	"social-network/backend/pkg/db/sqlite"
+	"social-network/backend/internal/websocket"
 )
 
 func main() {
@@ -26,7 +27,10 @@ func main() {
 	}
 
 	// 2. Build Routing Topology
-	mux := router.NewRouter(database.Db)
+	hub := websocket.NewHub()
+	go hub.Run() // Start the WebSocket hub in a separate goroutine - independent background thread for real-time message routing
+
+	mux := router.NewRouter(database.Db, hub)
 
 	// 3. Chain Edge Security & Visibility Framework (Starting basic)
 	handlerPipeline := middleware.Logger(middleware.RateLimit(middleware.CORS(mux)))
