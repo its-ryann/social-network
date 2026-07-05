@@ -5,9 +5,10 @@ import (
 	"net/http"
 	"social-network/backend/internal/auth"
 	"social-network/backend/internal/handlers"
+	"social-network/backend/internal/websocket"
 )
 
-func NewRouter(db *sql.DB) *http.ServeMux {
+func NewRouter(db *sql.DB, hub *websocket.Hub) *http.ServeMux {
 	mux := http.NewServeMux()
 	
 	userHandler := &handlers.UserHandler{DB: db}
@@ -32,6 +33,12 @@ func NewRouter(db *sql.DB) *http.ServeMux {
 	
 	// Chain verification layer boundaries
 	mux.Handle("GET /me", authMiddleware(meHandler))
+
+	// WebSocket Endpoint wrapped with authentication middleware
+	wsHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		websocket.ServeWebSocket(hub, db, w, r)
+	})
+	mux.Handle("GET /ws", authMiddleware(wsHandler))
 	
 	return mux
 }
