@@ -30,6 +30,7 @@ type Client struct {
 	Send   chan []byte
 }
 
+// ReadPump continuously pulls incoming framing inputs directly from the active socket link
 func (c *Client) ReadPump() {
 	defer func() {
 		c.Hub.Unregister <- c
@@ -38,26 +39,34 @@ func (c *Client) ReadPump() {
 
 	c.Conn.SetReadLimit(maxMessageSize)
 	c.Conn.SetReadDeadline(time.Now().Add(pongWait))
-	c.Conn.SetPongHandler(func(string) error { c.Conn.SetReadDeadline(time.Now().Add(pongWait)); return nil })
+	c.Conn.SetPongHandler(func(string) error {
+		c.Conn.SetReadDeadline(time.Now().Add(pongWait))
+		return nil
+	})
 
 	for {
-		_, message, err := c.Conn.ReadMessage()
+		messageType, message, err := c.Conn.ReadMessage()
 		if err != nil {
 			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
-				log.Printf("error: %v", err)
+				log.Printf("[WEBSOCKET] Unexpected connection tracking fault: %v", err)
 			}
 			break
 		}
-		c.Hub.Broadcast <- message
+
+		// Phase 4 Echo Isolation Plumbing Check
+		c.handleIncoming(messageType, message)
 	}
 }
 
+// handleIncoming isolates architectural plumbing logic from Phase 5's chat business logic
 func (c *Client) handleIncoming(messageType int, message []byte) {
-	log.Printf("Received message from user %s: %s", c.UserID, string(message))
-	// Here you can add logic to handle the incoming message, e.g., broadcasting it to other clients
-	c.Hub.Broadcast <- message	
+	log.Printf("[WEBSOCKET] Frame received from user %s: %s", c.UserID, string(message))
+	
+	// Direct Echo response back down the channel path pipe
+	c.Send <- append([]byte("Echo: "), message...)
 }
 
+// WritePump pushes buffered memory streams out over the persistent network socket
 func (c *Client) WritePump() {
 	ticker := time.NewTicker(pingPeriod)
 	defer func() {
@@ -80,15 +89,10 @@ func (c *Client) WritePump() {
 			}
 			w.Write(message)
 
-			n := len(c.Send)
-			for i := 0; i < n; i++ {
-				w.Write([]byte{'\n'})
-				w.Write(<-c.Send)
-			}
-
 			if err := w.Close(); err != nil {
 				return
 			}
+
 		case <-ticker.C:
 			c.Conn.SetWriteDeadline(time.Now().Add(writeWait))
 			if err := c.Conn.WriteMessage(websocket.PingMessage, nil); err != nil {
