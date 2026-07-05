@@ -6,18 +6,19 @@ import (
 	"social-network/backend/internal/auth"
 )
 
+// ServeWebSocket performs the upgrade handshake using the pre-authenticated context userID
 func ServeWebSocket(hub *Hub, w http.ResponseWriter, r *http.Request) {
-	// 1. Authenticate the incoming request
+	// Extract the userID injected into the context by auth.Authenticate middleware
 	userID, ok := auth.GetUserIDFromContext(r.Context())
 	if !ok {
-		log.Println("[WEBSOCKET] Failed to authenticate WebSocket request")
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		log.Println("[WEBSOCKET ERROR] ServeWebSocket invoked without authenticated context")
+		http.Error(w, `{"error":"Unauthorized edge entry"}`, http.StatusUnauthorized)
 		return
 	}
 
-	conn, err = upgrader.Upgrade(w, r, nil)
+	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		log.Printf("[WEBSOCKET] Upgrade failed: %v", err)
+		log.Printf("[WEBSOCKET ERROR] Upgrade handshake failed: %v", err)
 		return
 	}
 
@@ -28,8 +29,9 @@ func ServeWebSocket(hub *Hub, w http.ResponseWriter, r *http.Request) {
 		Send:   make(chan []byte, 256),
 	}
 
-	hub.Register <- client
+	client.Hub.Register <- client
 
+	// Start concurrent asynchronous processing goroutines
 	go client.WritePump()
 	go client.ReadPump()
 }
